@@ -53,10 +53,10 @@ The platform delivers a seamless shopping experience — from browsing products 
 ### 🛍️ Customer Experience
 - **Product Catalog** — Browse products with search and category filtering
 - **Product Detail** — Rich product pages with image galleries and quantity selectors
-- **Shopping Cart** — Add, update, and remove items with real-time cart management
+- **Shopping Cart** — Add, update, and remove items with real-time cart management (Zustand + localStorage sync)
 - **Secure Checkout** — Shipping form with Midtrans Snap payment popup
 - **Order History** — Track order status (pending → processing → shipped → completed)
-- **User Authentication** — Register, login, and token-based session management
+- **User Authentication** — Register, login, and token-based session management (Laravel Sanctum)
 
 ### 🎨 Visual & UI
 - **WebGL Galaxy Effects** — Immersive 3D starfield shader on the Collections page (built with OGL + custom GLSL)
@@ -65,6 +65,8 @@ The platform delivers a seamless shopping experience — from browsing products 
 - **Smooth Scrolling** — Butter-smooth scroll behavior powered by Lenis
 - **Framer Motion Animations** — Fluid page transitions and hover effects
 - **Responsive Design** — Fully responsive across all device sizes
+- **Flying Posters** — Animated 3D poster effects on collections page
+- **Hero Carousel** — Auto-rotating hero section with embla-carousel
 
 ### 🔧 Admin Dashboard
 - **Revenue Analytics** — Real-time stats for products, categories, orders, and total revenue
@@ -77,7 +79,7 @@ The platform delivers a seamless shopping experience — from browsing products 
 - **Midtrans Snap Integration** — Full payment flow with Snap popup
 - **Webhook Handling** — Server-to-server payment verification (SHA-512 signature)
 - **Stock Management** — Auto-decrement on checkout, restore on payment failure/expiration
-- **Order State Machine** — Enforced status transitions with validation
+- **Order State Machine** — Enforced status transitions with validation (pending → processing → shipped → completed, with cancellation at any stage)
 
 ---
 
@@ -89,7 +91,7 @@ The platform delivers a seamless shopping experience — from browsing products 
 |---|---|
 | **Laravel 13** | PHP framework for the REST API |
 | **Laravel Sanctum** | Token-based API authentication |
-| **SQLite** | Lightweight database (easily switchable) |
+| **SQLite** | Lightweight database (easily switchable to MySQL/PostgreSQL) |
 | **Midtrans PHP SDK** | Payment gateway integration |
 | **Cloudinary PHP SDK** | Cloud-based image hosting and management |
 | **Eloquent Sluggable** | Automatic URL slug generation |
@@ -110,6 +112,7 @@ The platform delivers a seamless shopping experience — from browsing products 
 | **Lenis** | Smooth scrolling |
 | **Axios** | HTTP client |
 | **Lucide React** | Icon library |
+| **Embla Carousel** | Carousel/slider component |
 
 ---
 
@@ -166,11 +169,11 @@ The platform delivers a seamless shopping experience — from browsing products 
 │  customer)   │                           │ price        │
 └──────┬───────┘                           │ stock        │
        │                                   │ image        │
-       │                                   │ is_active    │
-       ▼                                   └──────────────┘
-┌──────────────┐     ┌──────────────┐
-│    carts      │     │  cart_items  │
-├──────────────┤     ├──────────────┤
+       │                                   │ image_public_id│
+       ▼                                   │ is_active    │
+┌──────────────┐     ┌──────────────┘     └──────────────┘
+│    carts      │     ┌──────────────┐
+├──────────────┤     │  cart_items  │
 │ id           │◄────│ cart_id      │
 │ user_id      │     │ product_id   │
 └──────────────┘     │ quantity     │
@@ -185,7 +188,10 @@ The platform delivers a seamless shopping experience — from browsing products 
 │ recipient    │     │ product_price│
 │ phone        │     │ quantity     │
 │ address      │     │ subtotal     │
-│ total_price  │     └──────────────┘
+│ city         │     └──────────────┘
+│ postal_code  │
+│ total_price  │
+│ shipping_cost│
 │ grand_total  │
 │ payment_status│
 │ order_status │
@@ -204,7 +210,7 @@ The platform delivers a seamless shopping experience — from browsing products 
 |---|---|---|
 | `POST` | `/api/register` | Register a new account |
 | `POST` | `/api/login` | Login and receive token |
-| `GET` | `/api/products` | List active products (search & filter) |
+| `GET` | `/api/products` | List active products (search, filter, pagination) |
 | `GET` | `/api/products/{slug}` | Get product by slug |
 | `GET` | `/api/categories` | List all categories |
 | `GET` | `/api/categories/{slug}` | Get category by slug |
@@ -216,12 +222,13 @@ The platform delivers a seamless shopping experience — from browsing products 
 |---|---|---|
 | `GET` | `/api/me` | Get current user profile |
 | `POST` | `/api/logout` | Revoke current token |
+| `POST` | `/api/logout-all` | Revoke all tokens |
 | `GET` | `/api/cart` | Get user's cart |
 | `POST` | `/api/cart/items` | Add item to cart |
 | `PUT` | `/api/cart/items/{id}` | Update cart item quantity |
 | `DELETE` | `/api/cart/items/{id}` | Remove item from cart |
 | `POST` | `/api/checkout` | Create order & get payment token |
-| `GET` | `/api/orders` | Get order history |
+| `GET` | `/api/orders` | Get order history (paginated) |
 | `GET` | `/api/orders/{id}` | Get order detail |
 
 ### Admin (requires `admin` role)
@@ -229,10 +236,19 @@ The platform delivers a seamless shopping experience — from browsing products 
 | Method | Endpoint | Description |
 |---|---|---|
 | `GET` | `/api/admin/dashboard` | Dashboard statistics |
-| `CRUD` | `/api/admin/categories/*` | Category management |
-| `CRUD` | `/api/admin/products/*` | Product management |
-| `GET` | `/api/admin/orders` | List all orders |
+| `GET` | `/api/admin/categories` | List all categories (admin) |
+| `POST` | `/api/admin/categories` | Create category |
+| `PUT` | `/api/admin/categories/{id}` | Update category |
+| `DELETE` | `/api/admin/categories/{id}` | Delete category |
+| `GET` | `/api/admin/products` | List all products (admin, paginated) |
+| `GET` | `/api/admin/products/{id}` | Get product detail (admin) |
+| `POST` | `/api/admin/products` | Create product |
+| `PUT` | `/api/admin/products/{id}` | Update product |
+| `DELETE` | `/api/admin/products/{id}` | Delete product |
+| `GET` | `/api/admin/orders` | List all orders (admin, paginated) |
+| `GET` | `/api/admin/orders/{id}` | Get order detail (admin) |
 | `PUT` | `/api/admin/orders/{id}/status` | Update order status |
+| `POST` | `/api/admin/upload-test` | Test Cloudinary upload |
 
 ---
 
@@ -331,12 +347,16 @@ seventh-sky-store/
 ├── backend/                        # Laravel 13 API
 │   ├── app/
 │   │   ├── Http/
-│   │   │   ├── Controllers/Api/   # API controllers
-│   │   │   └── Middleware/        # Admin middleware
-│   │   ├── Models/                # Eloquent models
-│   │   └── Services/              # Business logic (Midtrans, Cloudinary)
+│   │   │   ├── Controllers/Api/   # API controllers (Auth, Product, Category, Cart, Order, Checkout, AdminDashboard, Midtrans, Upload)
+│   │   │   ├── Middleware/        # AdminMiddleware, SecurityHeaders
+│   │   │   └── Requests/          # Form requests for validation
+│   │   ├── Models/                # Eloquent models (User, Category, Product, Cart, CartItem, Order, OrderItem)
+│   │   ├── Services/              # Business logic (MidtransService, CloudinaryService, CategoryService)
+│   │   └── Providers/             # AppServiceProvider
 │   ├── database/
-│   │   └── migrations/            # Database schema
+│   │   ├── migrations/            # Database schema (12 migrations)
+│   │   ├── factories/             # Model factories
+│   │   └── seeders/               # Database seeders
 │   ├── routes/
 │   │   └── api.php                # API route definitions
 │   └── config/
@@ -344,23 +364,33 @@ seventh-sky-store/
 │
 ├── frontend/                       # Next.js 16 App
 │   ├── app/
-│   │   ├── (site)/                # Public pages (home, products, collections)
+│   │   ├── (site)/                # Public pages (home, products, product detail, collections, cart, checkout, orders, contact)
 │   │   ├── (auth)/                # Auth pages (login, register)
-│   │   └── (admin)/               # Admin pages (dashboard, CRUD)
+│   │   └── (admin)/               # Admin pages (dashboard, products CRUD, categories CRUD, orders)
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── layout/            # Navbar, Footer, CustomCursor
-│   │   │   ├── products/          # Product cards, grids
-│   │   │   ├── checkout/          # Checkout form
-│   │   │   ├── collections/       # WebGL effects
-│   │   │   └── admin/             # Admin dashboard components
-│   │   ├── contexts/              # Auth context (React Context)
-│   │   ├── hooks/                 # Custom hooks (cart, orders)
-│   │   ├── lib/                   # API client (Axios)
-│   │   └── stores/                # Zustand stores
+│   │   │   ├── admin/             # Admin components (Dashboard, Products, Categories, Orders, Sidebar, Forms)
+│   │   │   ├── auth/              # Login/Register forms
+│   │   │   ├── cart/              # CartView
+│   │   │   ├── checkout/          # CheckoutForm
+│   │   │   ├── collections/       # Galaxy (WebGL), FlyingPosters
+│   │   │   ├── home/              # HeroSection, HeroCarousel, FeaturedCollection, BrandStatement, NewArrival, TypographyShowcase, BrandIntro
+│   │   │   ├── layout/            # Navbar, Footer, ConditionalFooter, CustomCursor
+│   │   │   ├── order/             # OrdersView, OrderDetailView
+│   │   │   ├── product/           # ProductCard, ProductsView, QuantitySelector, ProductActions
+│   │   │   └── ui/                # Toast, ConfirmModal, ClickRipple, SmoothScroll
+│   │   ├── context/               # AuthContext, CartContext, ToastContext
+│   │   ├── hooks/                 # Custom hooks
+│   │   ├── lib/                   # API client, auth, cart, checkout, order, admin, cursorLoading, loadMidtrans
+│   │   ├── stores/                # Zustand stores
+│   │   └── types/                 # TypeScript types (product, midtrans)
 │   └── public/                    # Static assets
 │
-└── readME.MD                       # This file
+├── docs/                          # Documentation
+│   ├── PRD.md                     # Product Requirements Document
+│   └── SeventhSkyStore-Obsidian/  # Obsidian vault
+│
+└── README.md                      # This file
 ```
 
 ---
